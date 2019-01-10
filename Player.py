@@ -2,7 +2,7 @@ from pokerbots import Bot, parse_args, run_bot
 from pokerbots.actions import FoldAction, CallAction, CheckAction, BetAction, RaiseAction, ExchangeAction
 
 import random
-import pbot_calc
+import pbots_calc
 """
 Simple example pokerbot, written in python.
 """
