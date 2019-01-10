@@ -81,7 +81,7 @@ class Player(Bot):
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
         r = pbots_calc.calc(''.join(cards)+":xx",''.join(board_cards),'',1000)
-        if len(board_cards) == 0
+        if len(board_cards) == 0:
             print ''.join(cards) + ': ' + r.ev[0]
 
         # Default to checkcall
