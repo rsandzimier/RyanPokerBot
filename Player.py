@@ -2,7 +2,7 @@ from pokerbots import Bot, parse_args, run_bot
 from pokerbots.actions import FoldAction, CallAction, CheckAction, BetAction, RaiseAction, ExchangeAction
 
 import random
-import pbot_calc
+#import pbot_calc
 """
 Simple example pokerbot, written in python.
 """
@@ -80,8 +80,8 @@ class Player(Bot):
         min_amount: if BetAction or RaiseAction is valid, the smallest amount you can bet or raise to (i.e. the smallest you can increase your pip).
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
-        r = pbots_calc.calc(''.join(cards)+":xx",''.join(board_cards),'',1000)
-        print r.ev
+        #r = pbots_calc.calc(''.join(cards)+":xx",''.join(board_cards),'',1000)
+        #print r.ev
         # Default to checkcall
         if CallAction in legal_moves:
             return CallAction()
