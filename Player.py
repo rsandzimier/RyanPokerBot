@@ -82,7 +82,7 @@ class Player(Bot):
         '''
         r = pbots_calc.calc(''.join(cards)+":xx",''.join(board_cards),'',1000)
         if len(board_cards) == 0:
-            print ''.join(cards) + ': ' + r.ev[0]
+            print ''.join(cards) + ': ' + str(r.ev[0])
 
         # Default to checkcall
         if CallAction in legal_moves:
