@@ -97,9 +97,21 @@ class Player(Bot):
             if betting_history.shape[0] != 0:
                 betting_history = betting_history[np.where(betting_history[:,0] != betting_history[:,2])]
                 p_pot = np.divide(1.0*(betting_history[:,0]-betting_history[:,4]),betting_history[:,3])
-                p_pot_050 = p_pot[np.where(betting_history[:,2:5]==np.array([400,4,2,2]))]
-                p_pot_075 = p_pot[np.where(betting_history[:,2:5]!=np.array([400,4,2,2]))]
-                print [np.mean(p_pot_050), np.mean(p_pot_050), np.size(p_pot_050), np.mean(p_pot_075), np.mean(p_pot_075), np.size(p_pot_075)]
+                #print betting_history
+                #print p_pot
+                #print np.all(np.array(betting_history[:,2:6])!=np.array([400,4,2,2]),1)
+                #print np.all(np.array(betting_history[:,2:6])==np.array([400,4,2,2]),1)
+
+                #print np.array(betting_history[:,2:6])
+                p_pot_050 = p_pot[np.where(np.all(np.array(betting_history[:,2:6])==np.array([400,4,2,2]),1))]
+                p_pot_075 = p_pot[np.where(np.any(np.array(betting_history[:,2:6])!=np.array([400,4,2,2]),1))]
+                #print p_pot
+                #print p_pot_050
+                #print p_pot_075
+                print "ROUND " + str(new_round.hand_num)
+                if p_pot_050.size > 0: print [np.mean(p_pot_050), np.std(p_pot_050), p_pot_050.size] 
+                if p_pot_075.size > 0: print [np.mean(p_pot_075), np.std(p_pot_075), p_pot_075.size] 
+
 
 
 
