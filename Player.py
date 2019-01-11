@@ -33,6 +33,12 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
+
+        self.tank = False
+        self.norm_ratio = 999
+        self.random_detected = False
+
+
         self.call_count = 0
         self.check_count = 0
         self.bet_count = 0
@@ -71,6 +77,24 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
+
+        if new_round.hand_num > min([200,0.2*game.num_hands]) and self.norm_ratio < 1.0 and not self.random_detected:
+            print 'RANDOM BOT DETECTED'
+            self.random_detected = True
+            self.tank = False
+        if new_round.hand_num > min([200,0.2*game.num_hands]) and self.norm_ratio > 1.0 and self.random_detected:
+            print 'NO LONGER CONFIDENT THAT RANDOM BOT WAS DETECTED'
+            self.random_detected = False
+        if new_round.hand_num > min([200,0.2*game.num_hands]) and not self.random_detected and not self.tank:
+            self.tank = True
+            print 'START TANKING'
+
+
+
+
+
+
+
         self.discarded_cards = set()
 
     def handle_round_over(self, game, round, pot, cards, opponent_cards, board_cards, result, new_bankroll, new_opponent_bankroll, move_history):
@@ -288,7 +312,20 @@ class Player(Bot):
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
 
-
+        if self.tank:
+            if ExchangeAction in legal_moves and cost_func(ExchangeAction) < game.round_stack - pot.total:
+                return ExchangeAction()
+            elif (ExchangeAction in legal_moves) and (CheckAction in legal_moves):
+                return CheckAction()
+            if len(board_cards)==0:
+                if CheckAction in legal_moves:
+                    return CheckAction()
+                elif CallAction in legal_moves:
+                    return CallAction()
+            if FoldAction in legal_moves:
+                return FoldAction()
+            else:
+                return CheckAction()
 
         if calc is not None:
             result = calc(''.join(cards) + ':xx', ''.join(board_cards), ''.join(self.discarded_cards), 1000)
@@ -419,6 +456,15 @@ class Player(Bot):
         return options
 
     def round_over_return(self, game, round):
+        call_ratio = 0 if self.call_count == 0 else self.call_count_weighted/self.call_count
+        check_ratio = 0 if self.check_count == 0 else self.check_count_weighted/self.check_count
+        bet_ratio = 0 if self.bet_count == 0 else self.bet_count_weighted/self.bet_count
+        raise_ratio = 0 if self.raise_count == 0 else self.raise_count_weighted/self.raise_count
+        fold_ratio = 0 if self.fold_count == 0 else self.fold_count_weighted/self.fold_count
+        hold_ratio = 0 if self.hold_count == 0 else self.hold_count_weighted/self.hold_count
+        exchange_ratio = 0 if self.exchange_count == 0 else self.exchange_count_weighted/self.exchange_count
+        self.norm_ratio = np.sqrt((call_ratio-1.0)**2+(check_ratio-1.0)**2+(bet_ratio-1.0)**2+(raise_ratio-1.0)**2+(fold_ratio-1.0)**2+(hold_ratio-1.0)**2+(exchange_ratio-1.0)**2)
+        
         if game.num_hands == round.hand_num:
             if self.call_option_count != 0: print 'CALL PERCENTAGE: ' + str(self.call_count*100.0/self.call_option_count) + ' ' + str(self.call_count) + ' ' + str(self.call_option_count)
             if self.check_option_count != 0: print 'CHECK PERCENTAGE: ' + str(self.check_count*100.0/self.check_option_count) + ' ' + str(self.check_count) + ' ' + str(self.check_option_count)
@@ -429,14 +475,6 @@ class Player(Bot):
             if self.exchange_option_count != 0: print 'EXCHANGE PERCENTAGE: ' + str(self.exchange_count*100.0/self.exchange_option_count) + ' ' + str(self.exchange_count) + ' ' + str(self.exchange_option_count)
             print ''
 
-            call_ratio = 0 if self.call_count == 0 else self.call_count_weighted/self.call_count
-            check_ratio = 0 if self.check_count == 0 else self.check_count_weighted/self.check_count
-            bet_ratio = 0 if self.bet_count == 0 else self.bet_count_weighted/self.bet_count
-            raise_ratio = 0 if self.raise_count == 0 else self.raise_count_weighted/self.raise_count
-            fold_ratio = 0 if self.fold_count == 0 else self.fold_count_weighted/self.fold_count
-            hold_ratio = 0 if self.hold_count == 0 else self.hold_count_weighted/self.hold_count
-            exchange_ratio = 0 if self.exchange_count == 0 else self.exchange_count_weighted/self.exchange_count
-
             print 'CALL WEIGHTED RATIO: ' + str(call_ratio) + ' ' + str(self.call_count_weighted) + ' ' + str(self.call_count)
             print 'CHECK WEIGHTED RATIO: ' + str(check_ratio) + ' ' + str(self.check_count_weighted) + ' ' + str(self.check_count)
             print 'BET WEIGHTED RATIO: ' + str(bet_ratio) + ' ' + str(self.bet_count_weighted) + ' ' + str(self.bet_count) 
@@ -444,7 +482,7 @@ class Player(Bot):
             print 'FOLD WEIGHTED RATIO: ' + str(fold_ratio) + ' ' + str(self.fold_count_weighted) + ' ' + str(self.fold_count)
             print 'HOLD WEIGHTED RATIO: ' + str(hold_ratio) + ' ' + str(self.hold_count_weighted) + ' ' + str(self.hold_count)
             print 'EXCHANGE WEIGHTED RATIO: ' + str(exchange_ratio) + ' ' + str(self.exchange_count_weighted) + ' ' + str(self.exchange_count)
-            print 'NORM WEIGHTED RATIO: ' + str(np.sqrt((call_ratio-1.0)**2+(check_ratio-1.0)**2+(bet_ratio-1.0)**2+(raise_ratio-1.0)**2+(fold_ratio-1.0)**2+(hold_ratio-1.0)**2+(exchange_ratio-1.0)**2))
+            print 'NORM WEIGHTED RATIO: ' + str(self.norm_ratio)
             return True
         return False
 
@@ -473,7 +511,7 @@ class Player(Bot):
             maxraise = min([stackA, stackB])
             minraise = min([max([2+betA, betA-betB+betA]), maxraise])
             pot = 800 - stackA - stackB + 2*max([betA,betB])
-            print str(bet_act)+','+str(minraise)+','+str(maxraise)+',' + str(pot) + ',' + str(betA)+','+str(betB) + ',' + str(stackA)+','+str(stackB)
+            #print str(bet_act)+','+str(minraise)+','+str(maxraise)+',' + str(pot) + ',' + str(betA)+','+str(betB) + ',' + str(stackA)+','+str(stackB)
 
         return bet_act
 
