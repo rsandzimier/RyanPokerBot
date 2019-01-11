@@ -38,6 +38,8 @@ class Player(Bot):
         self.norm_ratio = 999
         self.random_detected = False
 
+        self.betting_history = []
+
 
         self.call_count = 0
         self.check_count = 0
@@ -88,6 +90,20 @@ class Player(Bot):
         if new_round.hand_num > min([200,0.2*game.num_hands]) and not self.random_detected and not self.tank:
             self.tank = True
             print 'START TANKING'
+
+
+        betting_history = np.asarray(self.betting_history)
+        if new_round.hand_num > min([200,0.2*game.num_hands]): 
+            if betting_history.shape[0] != 0:
+                betting_history = betting_history[np.where(betting_history[:,0] != betting_history[:,2])]
+                p_pot = np.divide(1.0*(betting_history[:,0]-betting_history[:,4]),betting_history[:,3])
+                p_pot_050 = p_pot[np.where(betting_history[:,2:5]==np.array([400,4,2,2]))]
+                p_pot_075 = p_pot[np.where(betting_history[:,2:5]!=np.array([400,4,2,2]))]
+                print [np.mean(p_pot_050), np.mean(p_pot_050), np.size(p_pot_050), np.mean(p_pot_075), np.mean(p_pot_075), np.size(p_pot_075)]
+
+
+
+
 
 
 
@@ -483,7 +499,7 @@ class Player(Bot):
             print 'HOLD WEIGHTED RATIO: ' + str(hold_ratio) + ' ' + str(self.hold_count_weighted) + ' ' + str(self.hold_count)
             print 'EXCHANGE WEIGHTED RATIO: ' + str(exchange_ratio) + ' ' + str(self.exchange_count_weighted) + ' ' + str(self.exchange_count)
             print 'NORM WEIGHTED RATIO: ' + str(self.norm_ratio)
-            return True
+
         return False
 
     def betFromMove(self, move, bet_act, bet_opp, stackA, stackB, isB):
@@ -511,6 +527,7 @@ class Player(Bot):
             maxraise = min([stackA, stackB])
             minraise = min([max([2+betA, betA-betB+betA]), maxraise])
             pot = 800 - stackA - stackB + 2*max([betA,betB])
+            self.betting_history.append([bet_act,minraise,maxraise,pot,betA,betB,stackA,stackB])
             #print str(bet_act)+','+str(minraise)+','+str(maxraise)+',' + str(pot) + ',' + str(betA)+','+str(betB) + ',' + str(stackA)+','+str(stackB)
 
         return bet_act
