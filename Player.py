@@ -340,7 +340,7 @@ class Player(Bot):
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
 
-        if self.tank:
+        if self.tank and False:
             if ExchangeAction in legal_moves and cost_func(ExchangeAction) < game.round_stack - pot.total:
                 return ExchangeAction()
             elif (ExchangeAction in legal_moves) and (CheckAction in legal_moves):
