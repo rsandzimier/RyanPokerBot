@@ -116,22 +116,22 @@ class Player(Bot):
         move_history.pop(0)
         # PRE-FLOP BET
         if not firstToActIsA:
-            betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+            betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
         self.options_betting(stackA, stackB, betA, betB)
         if betA < 0: return self.round_over_return(game, round)
-        betB = self.betFromMove(move_history.pop(0),betB,betA,True)
+        betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
         if betB < 0: return self.round_over_return(game, round)
         if firstToActIsA or betB>betA:
-            betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+            betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
 
         if betA < 0: return self.round_over_return(game, round)
         while(betA != betB):
             if betB < betA:
                 self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,True)
+                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
                 if betB < 0: return self.round_over_return(game, round)
             else:
-                betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
                 if betA < 0: return self.round_over_return(game, round)
 
         stackA = stackA - betA
@@ -164,15 +164,15 @@ class Player(Bot):
         #print 'FLOP'
         while True and stackA!=0 and stackB != 0:
             if (betA == 0 and betB == 0 and firstToActIsA):
-                betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
             if (betA == 0 and betB == 0 and not firstToActIsA):
                 self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,True)
+                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
             if betB < betA or (betA == 0 and betB ==0 and firstToActIsA):
                 self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,True)
+                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
             else:
-                betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
             if betB < 0 or betA < 0:
                 return self.round_over_return(game, round)
             if betA == betB:
@@ -205,15 +205,15 @@ class Player(Bot):
         # TURN BET
         while True and stackA!=0 and stackB != 0:
             if (betA == 0 and betB == 0 and firstToActIsA):
-                betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
             if (betA == 0 and betB == 0 and not firstToActIsA):
                 self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,True)
+                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
             if betB < betA:
                 self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,True)
+                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
             else:
-                betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
             if betB < 0 or betA < 0:
                 return self.round_over_return(game, round)
             if betA == betB:
@@ -248,15 +248,15 @@ class Player(Bot):
 
         while True and stackA!=0 and stackB != 0:
             if (betA == 0 and betB == 0 and firstToActIsA):
-                betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
             if (betA == 0 and betB == 0 and not firstToActIsA):
                 self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,True)
+                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
             if betB < betA:
                 self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,True)
+                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
             else:
-                betA = self.betFromMove(move_history.pop(0),betA,betB,False)
+                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
             if betB < 0 or betA < 0:
                 return self.round_over_return(game, round)
             if betA == betB:
@@ -448,9 +448,11 @@ class Player(Bot):
             return True
         return False
 
-    def betFromMove(self, move, bet_act, bet_opp, isB):
+    def betFromMove(self, move, bet_act, bet_opp, stackA, stackB, isB):
         i = 0
         if isB: i = 1
+        betA = bet_opp if isB else bet_act
+        betB = bet_act if isB else bet_opp
         if move[:2] == 'CA':
             bet_act = bet_opp
             self.call_count += i
@@ -466,6 +468,13 @@ class Player(Bot):
         elif move[:2] == 'BE':
             bet_act = int(move[4:move[4:].find(':')+4])
             self.bet_count += i
+
+        if isB and (move[:2] == 'BE' or move[:2] == 'RA'):
+            maxraise = min([stackA, stackB])
+            minraise = min([max([2+betA, betA-betB+betA]), maxraise])
+            pot = 800 - stackA - stackB + 2*max([betA,betB])
+            print str(bet_act)+','+str(minraise)+','+str(maxraise)+',' + str(pot) + ',' + str(betA)+','+str(betB) + ',' + str(stackA)+','+str(stackB)
+
         return bet_act
 
     def exchangeFromMove(self, move, isB):
