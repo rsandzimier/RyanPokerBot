@@ -106,7 +106,7 @@ class Player(Bot):
             #print "ROUND " + str(new_round.hand_num)
             #if p_pot_050.size > 0: print [np.mean(p_pot_050), np.std(p_pot_050), p_pot_050.size] 
             #if p_pot_075.size > 0: print [np.mean(p_pot_075), np.std(p_pot_075), p_pot_075.size] 
-            if p_pot_050.size > 0 and p_pot_075.size > 0 and 0.5 - 0.01 < np.mean(p_pot_050) < 0.5 + 0.01 and np.std(p_pot_050) < 0.01 and 0.75 - 0.05 < np.mean(p_pot_075) < 0.75 + 0.05 and np.std(p_pot_075) < 0.15:
+            if p_pot_050.size > 0 and p_pot_075.size > 0 and 0.5 - 0.01 < np.mean(p_pot_050) < 0.5 + 0.01 and np.std(p_pot_050) < 0.01 and 0.75 - 0.10 < np.mean(p_pot_075) < 0.75 + 0.05 and np.std(p_pot_075) < 0.15:
                 print 'TEAMNAME BOT DETECTED'
                 self.TeamName_detected = True
                 self.random_detected = False
