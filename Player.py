@@ -377,9 +377,14 @@ class Player(Bot):
             return CheckAction()
 
         else:  # decision to commit resources to the pot
+            if round.bankroll > 1.5*(game.num_hands - round.hand_num + 1) + 2:
+                print 'WIN SECURE. START CHECK FOLDING. ROUND #' + str(round.hand_num)
+                if CheckAction in legal_moves: return CheckAction()
+                else: return FoldAction()
+
             continue_cost = cost_func(CallAction()) if CallAction in legal_moves else cost_func(CheckAction())
             # figure out how to raise the stakes
-            commit_amount = int(pot.pip + continue_cost + 0.75 * (pot.grand_total + continue_cost))
+            commit_amount = int(pot.pip + continue_cost + strength*np.random.normal(1.0,0.5) * (pot.grand_total + continue_cost))
             if min_amount is not None:
                 commit_amount = max(commit_amount, min_amount)
                 commit_amount = min(commit_amount, max_amount)
