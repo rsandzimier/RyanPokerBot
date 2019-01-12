@@ -37,6 +37,7 @@ class Player(Bot):
         self.tank = False
         self.norm_ratio = 999
         self.random_detected = False
+        self.TeamName_detected = False
 
         self.betting_history = []
 
@@ -93,7 +94,7 @@ class Player(Bot):
 
 
         betting_history = np.asarray(self.betting_history)
-        if new_round.hand_num > min([200,0.2*game.num_hands]): 
+        if new_round.hand_num > min([200,0.2*game.num_hands]) or True: 
             if betting_history.shape[0] != 0:
                 betting_history = betting_history[np.where(betting_history[:,0] != betting_history[:,2])]
                 p_pot = np.divide(1.0*(betting_history[:,0]-betting_history[:,4]),betting_history[:,3])
