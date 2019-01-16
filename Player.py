@@ -34,10 +34,7 @@ class Player(Bot):
         Nothing.
         '''
 
-        self.tank = False
         self.norm_ratio = 999
-        self.random_detected = False
-        self.TeamName_detected = False
 
         self.betting_history = []
 
@@ -57,7 +54,6 @@ class Player(Bot):
         self.fold_count_weighted = 0
         self.hold_count_weighted = 0
         self.exchange_count_weighted = 0
-
 
         self.call_option_count = 0
         self.check_option_count = 0
@@ -80,55 +76,6 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        betting_history = np.asarray(self.betting_history)
-
-        if new_round.hand_num > min([200,0.2*game.num_hands]) and self.norm_ratio < 1.0 and not self.random_detected:
-            print 'RANDOM BOT DETECTED'
-            self.random_detected = True
-            self.tank = False
-        if new_round.hand_num > min([200,0.2*game.num_hands]) and self.norm_ratio > 1.0 and self.random_detected:
-            print 'NO LONGER CONFIDENT THAT RANDOM BOT WAS DETECTED'
-            self.random_detected = False
-        if new_round.hand_num > min([200,0.2*game.num_hands]) and betting_history.shape[0] != 0 and not self.random_detected and not self.tank and not self.TeamName_detected:
-            betting_history = betting_history[np.where(betting_history[:,0] != betting_history[:,2])]
-            p_pot = np.divide(1.0*(betting_history[:,0]-betting_history[:,4]),betting_history[:,3])
-            #print betting_history
-            #print p_pot
-            #print np.all(np.array(betting_history[:,2:6])!=np.array([400,4,2,2]),1)
-            #print np.all(np.array(betting_history[:,2:6])==np.array([400,4,2,2]),1)
-
-            #print np.array(betting_history[:,2:6])
-            p_pot_050 = p_pot[np.where(np.all(np.array(betting_history[:,2:6])==np.array([400,4,2,2]),1))]
-            p_pot_075 = p_pot[np.where(np.any(np.array(betting_history[:,2:6])!=np.array([400,4,2,2]),1))]
-            #print p_pot
-            #print p_pot_050
-            #print p_pot_075
-            #print "ROUND " + str(new_round.hand_num)
-            #if p_pot_050.size > 0: print [np.mean(p_pot_050), np.std(p_pot_050), p_pot_050.size] 
-            #if p_pot_075.size > 0: print [np.mean(p_pot_075), np.std(p_pot_075), p_pot_075.size] 
-            if p_pot_050.size > 0 and p_pot_075.size > 0 and 0.5 - 0.01 < np.mean(p_pot_050) < 0.5 + 0.01 and np.std(p_pot_050) < 0.01 and 0.75 - 0.10 < np.mean(p_pot_075) < 0.75 + 0.05 and np.std(p_pot_075) < 0.15:
-                print 'TEAMNAME BOT DETECTED'
-                self.TeamName_detected = True
-                self.random_detected = False
-                self.tank = False
-
-        if new_round.hand_num > min([200,0.2*game.num_hands]) and not self.random_detected and not self.tank and not self.TeamName_detected:
-            self.tank = True
-            print 'START TANKING'
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         self.discarded_cards = set()
 
     def handle_round_over(self, game, round, pot, cards, opponent_cards, board_cards, result, new_bankroll, new_opponent_bankroll, move_history):
@@ -162,7 +109,7 @@ class Player(Bot):
         exchangeA = 0;
         exchangeB = 0;
         # BLINDS
-        if move_history[0][-1] == 'A':
+        if move_history[0][-1] == game.name:
             firstToActIsA = False
             betA = betA + 1
             betB = betB + 2
@@ -346,21 +293,6 @@ class Player(Bot):
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
 
-        if self.tank:
-            if ExchangeAction in legal_moves and cost_func(ExchangeAction) < game.round_stack - pot.total:
-                return ExchangeAction()
-            elif (ExchangeAction in legal_moves) and (CheckAction in legal_moves):
-                return CheckAction()
-            if len(board_cards)==0:
-                if CheckAction in legal_moves:
-                    return CheckAction()
-                elif CallAction in legal_moves:
-                    return CallAction()
-            if FoldAction in legal_moves:
-                return FoldAction()
-            else:
-                return CheckAction()
-
         if calc is not None:
             result = calc(''.join(cards) + ':xx', ''.join(board_cards), ''.join(self.discarded_cards), 1000)
             if result is not None:
@@ -393,6 +325,7 @@ class Player(Bot):
             commit_amount = int(pot.pip + continue_cost + strength*np.random.normal(1.0,0.5) * (pot.grand_total + continue_cost))
             if min_amount is not None:
                 commit_amount = max(commit_amount, min_amount)
+            if max_amount is not None:
                 commit_amount = min(commit_amount, max_amount)
 
             if RaiseAction in legal_moves:
