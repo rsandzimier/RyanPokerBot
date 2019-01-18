@@ -1,11 +1,13 @@
 from pokerbots import Bot, parse_args, run_bot
 from pokerbots.actions import FoldAction, CallAction, CheckAction, BetAction, RaiseAction, ExchangeAction
+import time
 
 try:
     from pbots_calc import calc
 except ImportError:
     calc = None
     print "Warning: could not import calc"
+#from equity_calc import calc
 
 import random
 import numpy as np
@@ -13,14 +15,19 @@ import numpy as np
 Simple example pokerbot, written in python.
 """
 
-
 def full_deck():
     return ['As','2s','3s','4s','5s','6s','7s','8s','9s','Ts','Js','Qs','Ks',
     'Ad','2d','3d','4d','5d','6d','7d','8d','9d','Td','Jd','Qd','Kd',
     'Ac','2c','3c','4c','5c','6c','7c','8c','9c','Tc','Jc','Qc','Kc',
     'Ah','2h','3h','4h','5h','6h','7h','8h','9h','Th','Jh','Qh','Kh']
     
-
+def full_range():
+    deck = full_deck();
+    hand_range = [];
+    for i in range(0,len(deck)):
+        for j in range(i+1, len(deck)):
+            hand_range.append(''.join([deck[i], deck[j]]))
+    return hand_range
 
 class Player(Bot):
     def handle_new_game(self, new_game):
@@ -33,11 +40,27 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
+        #print "NEW GAME"
+
+        self.moves = 0
+        self.phase = 0 # 0:blinds, 1:pre-flop bet, 2:pre-flop exchange, 3:flop bet, 4:flop exchange, 5: turn bet, 6:turn exchange, 7:river bet
+        self.firstToAct = True
+        self.actedThisPhase = False
+        self.actedThisPhase_opp = False
+
+        self.opp_range_all = [];
+        self.opp_range = [];
+
+        self.bet = 1
+        self.bet_opp = 1
+        self.exchanges = 0
+        self.exchanges_opp = 0
+        self.stack = new_game.round_stack
+        self.stack_opp = new_game.round_stack
 
         self.norm_ratio = 999
 
         self.betting_history = []
-
 
         self.call_count = 0
         self.check_count = 0
@@ -76,7 +99,16 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
+        #print "NEW ROUND"
+
+        self.opp_range_all = full_range()
+        self.opp_range = self.opp_range_all[:]
+
         self.discarded_cards = set()
+        #print new_round.hand_num
+
+
+
 
     def handle_round_over(self, game, round, pot, cards, opponent_cards, board_cards, result, new_bankroll, new_opponent_bankroll, move_history):
         '''
@@ -97,182 +129,26 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        #print 'ROUND ' + str(round.hand_num) +' OVER'
-
-
-        #print move_history
-
-        stackA = game.round_stack
-        stackB = game.round_stack
-        betA = 0
-        betB = 0
-        exchangeA = 0;
-        exchangeB = 0;
-        # BLINDS
-        if move_history[0][-1] == game.name:
-            firstToActIsA = False
-            betA = betA + 1
-            betB = betB + 2
-        else:
-            firstToActIsA = True
-            betA = betA + 2
-            betB = betB + 1
-        move_history.pop(0)
-        move_history.pop(0)
-        # PRE-FLOP BET
-        if not firstToActIsA:
-            betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-        self.options_betting(stackA, stackB, betA, betB)
-        if betA < 0: return self.round_over_return(game, round)
-        betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
-        if betB < 0: return self.round_over_return(game, round)
-        if firstToActIsA or betB>betA:
-            betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-
-        if betA < 0: return self.round_over_return(game, round)
-        while(betA != betB):
-            if betB < betA:
-                self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
-                if betB < 0: return self.round_over_return(game, round)
-            else:
-                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-                if betA < 0: return self.round_over_return(game, round)
-
-        stackA = stackA - betA
-        stackB = stackB - betB
-
-        betA = 0
-        betB = 0
-
-        # PRE-FLOP EXCHANGE
-        while True:
-            if firstToActIsA:
-                exchangeA_bool = self.exchangeFromMove(move_history.pop(0),False)
-                self.options_exchanging(stackB, exchangeB)
-                exchangeB_bool = self.exchangeFromMove(move_history.pop(0),True)
-            else:
-                self.options_exchanging(stackB, exchangeB)
-                exchangeB_bool = self.exchangeFromMove(move_history.pop(0),True)
-                exchangeA_bool = self.exchangeFromMove(move_history.pop(0),False)
-            if exchangeA_bool:
-                exchangeA = exchangeA + 1
-                stackA = stackA - 2**exchangeA
-            if exchangeB_bool:
-                exchangeB = exchangeB + 1
-                stackB = stackB - 2**exchangeB
-            if not exchangeA_bool and not exchangeB_bool:
-                break
-        move_history.pop(0)
-        #(move_history.pop(0)[:2] != 'DE'
-        # FLOP BET
-        #print 'FLOP'
-        while True and stackA!=0 and stackB != 0:
-            if (betA == 0 and betB == 0 and firstToActIsA):
-                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-            if (betA == 0 and betB == 0 and not firstToActIsA):
-                self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
-            if betB < betA or (betA == 0 and betB ==0 and firstToActIsA):
-                self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
-            else:
-                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-            if betB < 0 or betA < 0:
-                return self.round_over_return(game, round)
-            if betA == betB:
-                break
-        stackA = stackA - betA
-        stackB = stackB - betB
-
-        betA = 0
-        betB = 0
-
-        # FLOP EXCHANGE
-        while True:
-            if firstToActIsA:
-                exchangeA_bool = self.exchangeFromMove(move_history.pop(0),False)
-                self.options_exchanging(stackB, exchangeB)
-                exchangeB_bool = self.exchangeFromMove(move_history.pop(0),True)
-            else:
-                self.options_exchanging(stackB, exchangeB)
-                exchangeB_bool = self.exchangeFromMove(move_history.pop(0),True)
-                exchangeA_bool = self.exchangeFromMove(move_history.pop(0),False)
-            if exchangeA_bool:
-                exchangeA = exchangeA + 1
-                stackA = stackA - 2**exchangeA
-            if exchangeB_bool:
-                exchangeB = exchangeB + 1
-                stackB = stackB - 2**exchangeB
-            if not exchangeA_bool and not exchangeB_bool:
-                break
-        move_history.pop(0)
-        # TURN BET
-        while True and stackA!=0 and stackB != 0:
-            if (betA == 0 and betB == 0 and firstToActIsA):
-                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-            if (betA == 0 and betB == 0 and not firstToActIsA):
-                self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
-            if betB < betA:
-                self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
-            else:
-                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-            if betB < 0 or betA < 0:
-                return self.round_over_return(game, round)
-            if betA == betB:
-                break
-        stackA = stackA - betA
-        stackB = stackB - betB
-
-        betA = 0
-        betB = 0
-
-        # TURN EXCHANGE
-        while True:
-            if firstToActIsA:
-                exchangeA_bool = self.exchangeFromMove(move_history.pop(0),False)
-                self.options_exchanging(stackB, exchangeB)
-                exchangeB_bool = self.exchangeFromMove(move_history.pop(0),True)
-            else:
-                self.options_exchanging(stackB, exchangeB)
-                exchangeB_bool = self.exchangeFromMove(move_history.pop(0),True)
-                exchangeA_bool = self.exchangeFromMove(move_history.pop(0),False)
-            if exchangeA_bool:
-                exchangeA = exchangeA + 1
-                stackA = stackA - 2**exchangeA
-            if exchangeB_bool:
-                exchangeB = exchangeB + 1
-                stackB = stackB - 2**exchangeB
-            if not exchangeA_bool and not exchangeB_bool:
-                break
-        move_history.pop(0)
-
-        # RIVER BET
-
-        while True and stackA!=0 and stackB != 0:
-            if (betA == 0 and betB == 0 and firstToActIsA):
-                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-            if (betA == 0 and betB == 0 and not firstToActIsA):
-                self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
-            if betB < betA:
-                self.options_betting(stackA, stackB, betA, betB)
-                betB = self.betFromMove(move_history.pop(0),betB,betA,stackA,stackB,True)
-            else:
-                betA = self.betFromMove(move_history.pop(0),betA,betB,stackA,stackB,False)
-            if betB < 0 or betA < 0:
-                return self.round_over_return(game, round)
-            if betA == betB:
-                break
-        stackA = stackA - betA
-        stackB = stackB - betB
-        betA = 0
-        betB = 0
-        pass
+        #print "ROUND OVER"
+        #print self.moves
+        #print len(move_history)
+        while (self.moves < len(move_history)):
+            #print "TEST A"
+            self.handleMove(move_history[self.moves],game,board_cards)
+            self.moves += 1
+        
+        self.moves = 0
+        self.phase = 0
+        self.firstToAct = True
+        self.actedThisPhase = False
+        self.actedThisPhase_opp = False
+        self.bet = 1
+        self.bet_opp = 1
+        self.exchanges = 0
+        self.exchanges_opp = 0
+        self.stack = game.round_stack
+        self.stack_opp = game.round_stack
         return self.round_over_return(game, round)
-
 
     def get_action(self, game, round, pot, cards, board_cards, legal_moves, cost_func, move_history, time_left, min_amount=None, max_amount=None):
         '''
@@ -293,17 +169,36 @@ class Player(Bot):
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
 
+        #print "GET ACTION"
+        #print time_left
+        if len(self.opp_range_all) == 1326:
+            self.removeSeenFromOppRange(cards)
+        #print self.moves
+        #print len(move_history)
+        while (self.moves < len(move_history)):
+            #print "TEST B"
+            self.handleMove(move_history[self.moves],game,board_cards)
+            self.moves += 1
+        #print "TEST H"
+
         if calc is not None:
+            s = time.time()
             result = calc(''.join(cards) + ':xx', ''.join(board_cards), ''.join(self.discarded_cards), 1000)
             if result is not None:
                 strength = result.ev[0]
+                sf = time.time()
+                print "TIME SINGLE: " + str(sf-s)
             else:
-                print "Warning: calc returned None"
+                #print "Warning: calc returned None"
                 strength = random.random()
         else:
             strength = random.random()
+        #print "TEST I"
+
 
         if ExchangeAction in legal_moves:  # decision to exchange
+            #print "TEST J"
+
             # exchange logic
             # if we exchange, we should update self.discarded_cards
             exchange_cost = cost_func(ExchangeAction())
@@ -313,12 +208,14 @@ class Player(Bot):
                 self.discarded_cards |= set(cards)  # keep track of the cards we discarded
                 return ExchangeAction()
             return CheckAction()
-
         else:  # decision to commit resources to the pot
+            #print "TEST K"
+
             if round.bankroll > 1.5*(game.num_hands - round.hand_num + 1) + 2:
                 print 'WIN SECURE. START CHECK FOLDING. ROUND #' + str(round.hand_num)
                 if CheckAction in legal_moves: return CheckAction()
                 else: return FoldAction()
+            #print "TEST L"
 
             continue_cost = cost_func(CallAction()) if CallAction in legal_moves else cost_func(CheckAction())
             # figure out how to raise the stakes
@@ -327,6 +224,7 @@ class Player(Bot):
                 commit_amount = max(commit_amount, min_amount)
             if max_amount is not None:
                 commit_amount = min(commit_amount, max_amount)
+            #print "TEST M"
 
             if RaiseAction in legal_moves:
                 commit_action = RaiseAction(commit_amount)
@@ -336,6 +234,7 @@ class Player(Bot):
                 commit_action = CallAction()
             else:  # only legal action
                 return CheckAction()
+            #print "TEST N"
 
             if continue_cost > 0:  # our opponent has raised the stakes
                 if continue_cost > 1 and strength < 1:  # tight-aggressive playstyle
@@ -344,16 +243,20 @@ class Player(Bot):
                 pot_odds = float(continue_cost) / (pot.grand_total + continue_cost)
                 if strength >= pot_odds:  # staying in the game has positive EV
                     if strength > 0.5 and random.random() < strength:  # commit more sometimes
+                        #print "TEST O"
                         return commit_action
+                    #print "TEST P"
                     return CallAction()
                 else:  # staying in the game has negative EV
+                    #print "TEST Q"
                     return FoldAction()
 
             elif continue_cost == 0:
                 if random.random() < strength:  # balance bluffs with value bets
+                    #print "TEST R"
                     return commit_action
+                #print "TEST S"
                 return CheckAction()
-
 
         # Default to checkcall
         if CallAction in legal_moves:
@@ -361,36 +264,36 @@ class Player(Bot):
         else:
             return CheckAction()
 
-
-    def options_betting(self, stackA, stackB, betA, betB):
+    def options_betting(self):
+        #print "OPTIONS BETTING"
         options = [[],[]]
         #print [stackA, stackB, betA, betB]
-        if betB > betA:
+        if self.bet_opp > self.bet:
             return [[],[]]
-        if betB == 0 and betA == 0:
+        if self.bet_opp == 0 and self.bet == 0:
             options[0].append("CHECK")
-            if stackA > 0 and stackB > 0:
-                maxbet = min([stackA, stackB])
+            if self.stack > 0 and self.stack_opp > 0:
+                maxbet = min([self.stack, self.stack_opp])
                 minbet = min([2, maxbet])
                 options[0].append("BET")
                 options[1].append(minbet)
                 options[1].append(maxbet)
-        elif betB == betA:
+        elif self.bet_opp == self.bet:
             options[0].append("CHECK")
 
-            if stackA-betA > 0 and stackB - betB > 0:
-                maxraise = min([stackA, stackB])
-                minraise = min([2+betA, maxraise])
+            if self.stack-self.bet > 0 and self.stack_opp - self.bet_opp > 0:
+                maxraise = min([self.stack, self.stack_opp])
+                minraise = min([2+self.bet, maxraise])
                 options[0].append("RAISE")
                 options[1].append(minraise)
                 options[1].append(maxraise)
-        elif betB < betA:
+        elif self.bet_opp < self.bet:
             options[0].append("CALL")
             options[0].append("FOLD")
 
-            if stackA-betA > 0 and stackB - betA > 0:
-                maxraise = min([stackA, stackB])
-                minraise = min([max([2+betA, betA-betB+betA]), maxraise])
+            if self.stack-self.bet > 0 and self.stack_opp - self.bet > 0:
+                maxraise = min([self.stack, self.stack_opp])
+                minraise = min([max([2+self.bet, self.bet-self.bet_opp+self.bet]), maxraise])
                 options[0].append("RAISE")
                 options[1].append(minraise)
                 options[1].append(maxraise)
@@ -412,11 +315,11 @@ class Player(Bot):
             self.fold_count_weighted += 1.0/len(options[0])
         return options
 
-    def options_exchanging(self, stackB,exchangeB):
+    def options_exchanging(self):
         options = []
         options.append('CHECK')
 
-        if stackB > 2**(exchangeB + 1):
+        if self.stack_opp > 2**(self.exchanges_opp + 1):
             options.append('EXCHANGE')
 
         if "CHECK" in options:
@@ -458,11 +361,13 @@ class Player(Bot):
 
         return False
 
-    def betFromMove(self, move, bet_act, bet_opp, stackA, stackB, isB):
+    def betFromMove(self, move, isB):
         i = 0
         if isB: i = 1
-        betA = bet_opp if isB else bet_act
-        betB = bet_act if isB else bet_opp
+
+        bet_act = self.bet_opp if isB else self.bet
+        bet_opp = self.bet if isB else self.bet_opp
+
         if move[:2] == 'CA':
             bet_act = bet_opp
             self.call_count += i
@@ -480,23 +385,123 @@ class Player(Bot):
             self.bet_count += i
 
         if isB and (move[:2] == 'BE' or move[:2] == 'RA'):
-            maxraise = min([stackA, stackB])
-            minraise = min([max([2+betA, betA-betB+betA]), maxraise])
-            pot = 800 - stackA - stackB + 2*max([betA,betB])
-            self.betting_history.append([bet_act,minraise,maxraise,pot,betA,betB,stackA,stackB])
+            maxraise = min([self.stack, self.stack_opp])
+            minraise = min([max([2+self.bet, self.bet-self.bet_opp+self.bet]), maxraise])
+            pot = 800 - self.stack - self.stack_opp + 2*max([self.bet,self.bet_opp])
+            self.betting_history.append([bet_act,minraise,maxraise,pot,self.bet,self.bet_opp,self.stack,self.stack_opp])
             #print str(bet_act)+','+str(minraise)+','+str(maxraise)+',' + str(pot) + ',' + str(betA)+','+str(betB) + ',' + str(stackA)+','+str(stackB)
-
-        return bet_act
+        if isB:
+            self.bet_opp = bet_act
+        else:
+            self.bet = bet_act
 
     def exchangeFromMove(self, move, isB):
-        i = 0
-        if isB: i = 1
         if move[:2] == 'EX':
-            self.exchange_count += i
+            if isB:
+                self.exchange_count += 1
+                self.opp_range = self.opp_range_all[:]
+                print "B EXCHANGED"
+            else: 
+                self.removeSeenFromOppRange([move[15:17], move[18:20]])
             return True
-        self.hold_count += i
-
+        if isB:
+            self.hold_count += 1
         return False
+
+    def removeSeenFromOppRange(self, cards):
+        for card in cards:
+            self.opp_range_all = [x for x in self.opp_range_all if card not in x]
+            self.opp_range = [x for x in self.opp_range if card not in x]
+
+        #print len(self.opp_range_all)
+
+    def removeAssumedFromOppRange(self, cards):
+        for card in cards:
+            self.opp_range = [x for x in self.opp_range if card not in x]
+        #print len(self.opp_range) 
+
+    def reduceRangeBasedOnEV(self, pot, cost, board_cards, EV_thresh):
+        #print "REDUCE"
+        #print len(self.opp_range)
+        temp_range = []
+        #a = time.time()
+        #for x in self.opp_range:
+            #s = time.time()
+            #EV = calc(x + ':xx', ''.join(board_cards), '', 10000).ev[0]*(pot + 2*self.bet_opp + cost) - cost
+            #sf = time.time()
+            #print "TIME SINGLE: " + str(sf-s)
+            #if EV > EV_thresh:
+            #    temp_range.append(x)
+        #af = time.time()
+        #print "TIME ALL: " + str(len(self.opp_range)) + ":" + str(af-a)
+        #self.opp_range = temp_range[:]
+        #print len(self.opp_range)
+        #print "END REDUCE"
+
+    def handleMove(self, move, game, board_cards):
+        #print "HANDLE MOVE " + move 
+        if (self.phase >= 8): return
+
+        myMove = (game.name == move[-1])
+        
+        if move[0:4] == "DEAL":
+            self.removeSeenFromOppRange(board_cards)
+            self.phase += 1
+            return
+        if move[0:4] == "FOLD":
+            if not myMove:
+                self.options_betting()
+                self.betFromMove(move,True)
+            self.phase = 8
+            return
+        # BLINDS
+        if self.phase == 0:   
+            if move[-1] == game.name:
+                self.firstToAct = False
+                self.bet_opp += 1
+            else: 
+                self.firstToAct = True
+                self.bet += 1
+            self.phase = 1
+            return
+        if move[0:4]=="POST": return
+        # BET
+        if self.phase%2==1:
+            if myMove:
+                self.betFromMove(move,False)
+                self.actedThisPhase = True
+            else:
+                bet_opp_prev = self.bet_opp
+                self.options_betting()
+                self.betFromMove(move,True)
+                self.actedThisPhase_opp = True
+                self.reduceRangeBasedOnEV(2*game.round_stack-self.stack-self.stack_opp, self.bet - bet_opp_prev, board_cards, 0)
+                #print "TEST C"
+            #print "TEST D"
+            if self.actedThisPhase and self.actedThisPhase_opp and self.bet == self.bet_opp:
+                #print "TEST E"
+                self.stack -= self.bet
+                self.stack_opp -= self.bet_opp
+                self.bet = 0
+                self.bet_opp = 0
+                self.actedThisPhase = False
+                self.actedThisPhase_opp = False
+                self.phase += 1
+                #print "TEST F"
+            #print "TEST G"
+            return
+        # EXCHANGE
+        if self.phase%2 == 0:
+            if myMove:
+                if (self.exchangeFromMove(move,False)):
+                    self.exchanges += 1
+                    self.stack = self.stack - 2**self.exchanges
+            else:
+                self.options_exchanging()
+                if (self.exchangeFromMove(move,True)):
+                    self.exchanges_opp = self.exchanges_opp + 1
+                    self.stack_opp = self.stack_opp - 2**self.exchanges_opp
+            return
 
 
 if __name__ == '__main__':
