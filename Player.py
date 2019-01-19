@@ -12,6 +12,7 @@ except ImportError:
 
 import random
 import numpy as np
+import math
 """
 Simple example pokerbot, written in python.
 """
@@ -41,7 +42,6 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        #print "NEW GAME"
         self.preflop_odds = pickle.load(open('preflop/preflop_odds.pkl','rb'))
 
         self.moves = 0
@@ -107,7 +107,6 @@ class Player(Bot):
         self.opp_range = self.opp_range_all[:]
 
         self.discarded_cards = set()
-        #print new_round.hand_num
 
     def handle_round_over(self, game, round, pot, cards, opponent_cards, board_cards, result, new_bankroll, new_opponent_bankroll, move_history):
         '''
@@ -128,12 +127,7 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        #print "ROUND OVER"
-        #print self.moves
-        #print len(move_history)
-        #print move_history
         while (self.moves < len(move_history)):
-            #print "TEST A"
             self.handleMove(move_history[self.moves],game,board_cards)
             self.moves += 1
         
@@ -168,60 +162,62 @@ class Player(Bot):
         min_amount: if BetAction or RaiseAction is valid, the smallest amount you can bet or raise to (i.e. the smallest you can increase your pip).
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
-        #print "GET ACTION"
-        #print time_left
+
         if len(self.opp_range_all) == 1326:
             self.removeSeenFromOppRange(cards)
-        #print self.moves
-        #print len(move_history)
         while (self.moves < len(move_history)):
-            #print "TEST B"
             self.handleMove(move_history[self.moves],game,board_cards)
             self.moves += 1
-        #print "TEST H"
 
         if calc is not None:
-            #s = time.time()
             result = calc(''.join(cards) + ':' + ','.join(self.opp_range), ''.join(board_cards), ''.join(self.discarded_cards), 1000)
             if result is not None:
                 strength = result.ev[0]
-                #sf = time.time()
-                #print "TIME SINGLE: " + str(sf-s)
             else:
-                #print "Warning: calc returned None"
+                print "Warning: calc returned None"
                 strength = random.random()
         else:
             strength = random.random()
-        #print "TEST I"
 
         if ExchangeAction in legal_moves:  # decision to exchange
-            #print "TEST J"
             # exchange logic
             # if we exchange, we should update self.discarded_cards
+            if len(board_cards) == 0: return CheckAction() # Never exchange pre-flop
+
+            strength_exchange = calc('xx:' + ','.join(self.opp_range), ''.join(board_cards), ''.join(self.discarded_cards)+''.join(cards), 1000).ev[0]
             exchange_cost = cost_func(ExchangeAction())
-            exchange_ev = 0.5 * pot.opponent_total - 0.5 * (pot.total + exchange_cost)
-            check_ev = strength * pot.opponent_total - (1. - strength) * pot.total
+            exchange_ev = strength_exchange * (pot.grand_total + exchange_cost) - exchange_cost
+            check_ev = strength * pot.grand_total
             if exchange_ev > check_ev:  # exchanging is worth it
                 self.discarded_cards |= set(cards)  # keep track of the cards we discarded
                 return ExchangeAction()
             return CheckAction()
         else:  # decision to commit resources to the pot
-            #print "TEST K"
+            margin = game.big_blind/2.0 + 1.0
+            if round.bankroll > 0: margin *= 1;
+            elif round.bankroll < 0: margin *= -1;
+            else: margin *= 0;
+            bb_per_hand_ahead = (round.bankroll-margin)/(game.num_hands - round.hand_num + 1.0)
 
-            if round.bankroll > 1.5*(game.num_hands - round.hand_num + 1) + 2:
+            if bb_per_hand_ahead > 1.5:
                 print 'WIN SECURE. START CHECK FOLDING. ROUND #' + str(round.hand_num)
                 if CheckAction in legal_moves: return CheckAction()
                 else: return FoldAction()
-            print "TEST L"
+
+            #if len(board_cards) == 0 and pot.opponent_bets <= 2 and strength > 0.3:
+            #    min_bet = math.ceil(max(4.0 - 4.0*bb_per_hand_ahead,0))
+            #    if BetAction in legal_moves and min_bet > min_amount:
+            #        return BetAction(min_bet)
+            #    elif RaiseAction in legal_moves and min_bet > min_amount:
+            #        return RaiseAction(min_bet)
 
             continue_cost = cost_func(CallAction()) if CallAction in legal_moves else cost_func(CheckAction())
             # figure out how to raise the stakes
-            commit_amount = int(pot.pip + continue_cost + strength*np.random.normal(1.0,0.5) * (pot.grand_total + continue_cost))
+            commit_amount = int(pot.pip + continue_cost + (1 - bb_per_hand_ahead/2)*strength*np.random.normal(1.0,0.5) * (pot.grand_total + continue_cost))
             if min_amount is not None:
                 commit_amount = max(commit_amount, min_amount)
             if max_amount is not None:
                 commit_amount = min(commit_amount, max_amount)
-            #print "TEST M"
 
             if RaiseAction in legal_moves:
                 commit_action = RaiseAction(commit_amount)
@@ -231,28 +227,24 @@ class Player(Bot):
                 commit_action = CallAction()
             else:  # only legal action
                 return CheckAction()
-            #print "TEST N"
 
             if continue_cost > 0:  # our opponent has raised the stakes
-                if continue_cost > 1 and strength < 1:  # tight-aggressive playstyle
-                    strength -= 0.25  # intimidation factor
+                if continue_cost > 1 and strength < 1 and len(self.opp_range) == len(self.opp_range_all):  # tight-aggressive playstyle
+                    strength -= 0.2  # intimidation factor
+                elif continue_cost > 1 and strength < 1:
+                    strength -= 0.1
                 # calculate pot odds: is it worth it to stay in the game?
                 pot_odds = float(continue_cost) / (pot.grand_total + continue_cost)
                 if strength >= pot_odds:  # staying in the game has positive EV
                     if strength > 0.5 and random.random() < strength:  # commit more sometimes
-                        #print "TEST O"
                         return commit_action
-                    #print "TEST P"
                     return CallAction()
                 else:  # staying in the game has negative EV
-                    #print "TEST Q"
                     return FoldAction()
 
             elif continue_cost == 0:
                 if random.random() < strength:  # balance bluffs with value bets
-                    #print "TEST R"
                     return commit_action
-                #print "TEST S"
                 return CheckAction()
 
         # Default to checkcall
@@ -262,9 +254,7 @@ class Player(Bot):
             return CheckAction()
 
     def options_betting(self):
-        #print "OPTIONS BETTING"
         options = [[],[]]
-        #print [stackA, stackB, betA, betB]
         if self.bet_opp > self.bet:
             return [[],[]]
         if self.bet_opp == 0 and self.bet == 0:
@@ -404,29 +394,14 @@ class Player(Bot):
         return False
 
     def removeSeenFromOppRange(self, cards):
-        #print "SEEN " + str(cards)
-        #print self.opp_range
         for card in cards:
             self.opp_range_all = [x for x in self.opp_range_all if card not in x]
             self.opp_range = [x for x in self.opp_range if card not in x]
-        #print self.opp_range
-
-        #print len(self.opp_range_all)
 
     def reduceRangeBasedOnEV(self, pot, cost, board_cards, EV_thresh):
-        #print "REDUCE"
-        #print len(self.opp_range)
-        #print "EV Reduce"
         if len(board_cards)==0:
             temp_range = []
             for cards in self.opp_range:
-                #print "START"
-                #print [cards[0:2],cards[2:4]]
-                #print self.preflop_odds[frozenset([cards[0:2],cards[2:4]])]
-                #print self.preflop_odds[frozenset([cards[0:2],cards[2:4]])]*(pot + 2*self.bet_opp) - cost
-                #print pot
-                #print self.bet_opp
-                #print cost
                 if self.preflop_odds[frozenset([cards[0:2],cards[2:4]])]*(pot + 2*self.bet_opp) - cost >= EV_thresh:
                     temp_range.append(cards)
                 else:
@@ -434,22 +409,7 @@ class Player(Bot):
                     pass
             self.opp_range = temp_range[:]
 
-        #a = time.time()
-        #for x in self.opp_range:
-            #s = time.time()
-            #EV = calc(x + ':xx', ''.join(board_cards), '', 10000).ev[0]*(pot + 2*self.bet_opp + cost) - cost
-            #sf = time.time()
-            #print "TIME SINGLE: " + str(sf-s)
-            #if EV > EV_thresh:
-            #    temp_range.append(x)
-        #af = time.time()
-        #print "TIME ALL: " + str(len(self.opp_range)) + ":" + str(af-a)
-        #self.opp_range = temp_range[:]
-        #print len(self.opp_range)
-        #print "END REDUCE"
-
     def handleMove(self, move, game, board_cards):
-        #print "HANDLE MOVE " + move 
         if (move[0:4] == "SHOW" and move[-1] != game.name):
             if not move[5:7]+move[8:10] in self.opp_range and not move[8:10]+move[5:7] in self.opp_range:
                 print "OPPONENT SHOWED CARDS " + move[5:7]+move[8:10] + " WHICH WE PREVIOUSLY ELIMINATED"
@@ -491,10 +451,7 @@ class Player(Bot):
                 self.betFromMove(move,True)
                 self.actedThisPhase_opp = True
                 self.reduceRangeBasedOnEV(2*game.round_stack-self.stack-self.stack_opp, self.bet_opp - bet_opp_prev, board_cards, 0)
-                #print "TEST C"
-            #print "TEST D"
             if self.actedThisPhase and self.actedThisPhase_opp and self.bet == self.bet_opp:
-                #print "TEST E"
                 self.stack -= self.bet
                 self.stack_opp -= self.bet_opp
                 self.bet = 0
@@ -502,8 +459,6 @@ class Player(Bot):
                 self.actedThisPhase = False
                 self.actedThisPhase_opp = False
                 self.phase += 1
-                #print "TEST F"
-            #print "TEST G"
             return
         # EXCHANGE
         if self.phase%2 == 0:
