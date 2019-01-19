@@ -213,7 +213,7 @@ class Player(Bot):
 
             continue_cost = cost_func(CallAction()) if CallAction in legal_moves else cost_func(CheckAction())
             # figure out how to raise the stakes
-            commit_amount = int(pot.pip + continue_cost + (1 - bb_per_hand_ahead/2)*strength*np.random.normal(1.0,0.5) * (pot.grand_total + continue_cost))
+            commit_amount = int(pot.pip + continue_cost + (1 - bb_per_hand_ahead/2)*0.75* (pot.grand_total + continue_cost))
             if min_amount is not None:
                 commit_amount = max(commit_amount, min_amount)
             if max_amount is not None:
@@ -229,10 +229,9 @@ class Player(Bot):
                 return CheckAction()
 
             if continue_cost > 0:  # our opponent has raised the stakes
-                if continue_cost > 1 and strength < 1 and len(self.opp_range) == len(self.opp_range_all):  # tight-aggressive playstyle
-                    strength -= 0.2  # intimidation factor
-                elif continue_cost > 1 and strength < 1:
-                    strength -= 0.1
+                if continue_cost > 1 and strength < 1:  # tight-aggressive playstyle
+                    strength -= 0.25  # intimidation factor
+
                 # calculate pot odds: is it worth it to stay in the game?
                 pot_odds = float(continue_cost) / (pot.grand_total + continue_cost)
                 if strength >= pot_odds:  # staying in the game has positive EV
