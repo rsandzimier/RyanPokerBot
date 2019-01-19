@@ -1,6 +1,7 @@
 from pokerbots import Bot, parse_args, run_bot
 from pokerbots.actions import FoldAction, CallAction, CheckAction, BetAction, RaiseAction, ExchangeAction
 import time
+import pickle
 
 try:
     from pbots_calc import calc
@@ -41,6 +42,7 @@ class Player(Bot):
         Nothing.
         '''
         #print "NEW GAME"
+        self.preflop_odds = pickle.load(open('preflop/preflop_odds.pkl','rb'))
 
         self.moves = 0
         self.phase = 0 # 0:blinds, 1:pre-flop bet, 2:pre-flop exchange, 3:flop bet, 4:flop exchange, 5: turn bet, 6:turn exchange, 7:river bet
@@ -99,16 +101,13 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        #print "NEW ROUND"
+        print "NEW ROUND #" + str(new_round.hand_num)
 
         self.opp_range_all = full_range()
         self.opp_range = self.opp_range_all[:]
 
         self.discarded_cards = set()
         #print new_round.hand_num
-
-
-
 
     def handle_round_over(self, game, round, pot, cards, opponent_cards, board_cards, result, new_bankroll, new_opponent_bankroll, move_history):
         '''
@@ -132,6 +131,7 @@ class Player(Bot):
         #print "ROUND OVER"
         #print self.moves
         #print len(move_history)
+        #print move_history
         while (self.moves < len(move_history)):
             #print "TEST A"
             self.handleMove(move_history[self.moves],game,board_cards)
@@ -168,7 +168,6 @@ class Player(Bot):
         min_amount: if BetAction or RaiseAction is valid, the smallest amount you can bet or raise to (i.e. the smallest you can increase your pip).
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
-
         #print "GET ACTION"
         #print time_left
         if len(self.opp_range_all) == 1326:
@@ -182,12 +181,12 @@ class Player(Bot):
         #print "TEST H"
 
         if calc is not None:
-            s = time.time()
-            result = calc(''.join(cards) + ':xx', ''.join(board_cards), ''.join(self.discarded_cards), 1000)
+            #s = time.time()
+            result = calc(''.join(cards) + ':' + ','.join(self.opp_range), ''.join(board_cards), ''.join(self.discarded_cards), 1000)
             if result is not None:
                 strength = result.ev[0]
-                sf = time.time()
-                print "TIME SINGLE: " + str(sf-s)
+                #sf = time.time()
+                #print "TIME SINGLE: " + str(sf-s)
             else:
                 #print "Warning: calc returned None"
                 strength = random.random()
@@ -195,10 +194,8 @@ class Player(Bot):
             strength = random.random()
         #print "TEST I"
 
-
         if ExchangeAction in legal_moves:  # decision to exchange
             #print "TEST J"
-
             # exchange logic
             # if we exchange, we should update self.discarded_cards
             exchange_cost = cost_func(ExchangeAction())
@@ -215,7 +212,7 @@ class Player(Bot):
                 print 'WIN SECURE. START CHECK FOLDING. ROUND #' + str(round.hand_num)
                 if CheckAction in legal_moves: return CheckAction()
                 else: return FoldAction()
-            #print "TEST L"
+            print "TEST L"
 
             continue_cost = cost_func(CallAction()) if CallAction in legal_moves else cost_func(CheckAction())
             # figure out how to raise the stakes
@@ -280,7 +277,6 @@ class Player(Bot):
                 options[1].append(maxbet)
         elif self.bet_opp == self.bet:
             options[0].append("CHECK")
-
             if self.stack-self.bet > 0 and self.stack_opp - self.bet_opp > 0:
                 maxraise = min([self.stack, self.stack_opp])
                 minraise = min([2+self.bet, maxraise])
@@ -290,7 +286,6 @@ class Player(Bot):
         elif self.bet_opp < self.bet:
             options[0].append("CALL")
             options[0].append("FOLD")
-
             if self.stack-self.bet > 0 and self.stack_opp - self.bet > 0:
                 maxraise = min([self.stack, self.stack_opp])
                 minraise = min([max([2+self.bet, self.bet-self.bet_opp+self.bet]), maxraise])
@@ -409,21 +404,36 @@ class Player(Bot):
         return False
 
     def removeSeenFromOppRange(self, cards):
+        #print "SEEN " + str(cards)
+        #print self.opp_range
         for card in cards:
             self.opp_range_all = [x for x in self.opp_range_all if card not in x]
             self.opp_range = [x for x in self.opp_range if card not in x]
+        #print self.opp_range
 
         #print len(self.opp_range_all)
-
-    def removeAssumedFromOppRange(self, cards):
-        for card in cards:
-            self.opp_range = [x for x in self.opp_range if card not in x]
-        #print len(self.opp_range) 
 
     def reduceRangeBasedOnEV(self, pot, cost, board_cards, EV_thresh):
         #print "REDUCE"
         #print len(self.opp_range)
-        temp_range = []
+        #print "EV Reduce"
+        if len(board_cards)==0:
+            temp_range = []
+            for cards in self.opp_range:
+                #print "START"
+                #print [cards[0:2],cards[2:4]]
+                #print self.preflop_odds[frozenset([cards[0:2],cards[2:4]])]
+                #print self.preflop_odds[frozenset([cards[0:2],cards[2:4]])]*(pot + 2*self.bet_opp) - cost
+                #print pot
+                #print self.bet_opp
+                #print cost
+                if self.preflop_odds[frozenset([cards[0:2],cards[2:4]])]*(pot + 2*self.bet_opp) - cost >= EV_thresh:
+                    temp_range.append(cards)
+                else:
+                    print "Eliminating " + cards + " from opponent range"
+                    pass
+            self.opp_range = temp_range[:]
+
         #a = time.time()
         #for x in self.opp_range:
             #s = time.time()
@@ -440,6 +450,11 @@ class Player(Bot):
 
     def handleMove(self, move, game, board_cards):
         #print "HANDLE MOVE " + move 
+        if (move[0:4] == "SHOW" and move[-1] != game.name):
+            if not move[5:7]+move[8:10] in self.opp_range and not move[8:10]+move[5:7] in self.opp_range:
+                print "OPPONENT SHOWED CARDS " + move[5:7]+move[8:10] + " WHICH WE PREVIOUSLY ELIMINATED"
+            else:
+                print "SHOWN CARDS WERE IN RANGE"
         if (self.phase >= 8): return
 
         myMove = (game.name == move[-1])
@@ -475,7 +490,7 @@ class Player(Bot):
                 self.options_betting()
                 self.betFromMove(move,True)
                 self.actedThisPhase_opp = True
-                self.reduceRangeBasedOnEV(2*game.round_stack-self.stack-self.stack_opp, self.bet - bet_opp_prev, board_cards, 0)
+                self.reduceRangeBasedOnEV(2*game.round_stack-self.stack-self.stack_opp, self.bet_opp - bet_opp_prev, board_cards, 0)
                 #print "TEST C"
             #print "TEST D"
             if self.actedThisPhase and self.actedThisPhase_opp and self.bet == self.bet_opp:
@@ -502,7 +517,6 @@ class Player(Bot):
                     self.exchanges_opp = self.exchanges_opp + 1
                     self.stack_opp = self.stack_opp - 2**self.exchanges_opp
             return
-
 
 if __name__ == '__main__':
     args = parse_args()
