@@ -2,6 +2,7 @@ from pokerbots import Bot, parse_args, run_bot
 from pokerbots.actions import FoldAction, CallAction, CheckAction, BetAction, RaiseAction, ExchangeAction
 import time
 import pickle
+import json
 
 try:
     from pbots_calc import calc
@@ -44,9 +45,15 @@ class Player(Bot):
         Nothing.
         '''
         self.check_fold = False
-
-        self.preflop_odds = pickle.load(open('preflop/preflop_odds.pkl','rb'))
-        self.postflop_odds = pickle.load(open('postflop/postflop_odds.pkl','rb'))
+        with open('preflop/preflop_odds.pkl','rb') as fp:
+            self.preflop_odds = pickle.load(fp)
+        with open('postflop/postflop_odds.json','r') as fp:
+            self.postflop_odds = json.load(fp)
+            pass
+        print "TEST"
+        print len(self.postflop_odds)
+        print "TEST"
+        #self.postflop_odds = pickle.load(open('postflop/postflop_odds.pkl','rb'))
 
         self.moves = 0
         self.phase = 0 # 0:blinds, 1:pre-flop bet, 2:pre-flop exchange, 3:flop bet, 4:flop exchange, 5: turn bet, 6:turn exchange, 7:river bet
@@ -131,7 +138,7 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        if len(board_cards) > 3: print "TURN OR RIVER"
+        #if len(board_cards) > 3: print "TURN OR RIVER"
 
         while (self.moves < len(move_history)):
             self.handleMove(move_history[self.moves],game,board_cards)
@@ -168,7 +175,7 @@ class Player(Bot):
         min_amount: if BetAction or RaiseAction is valid, the smallest amount you can bet or raise to (i.e. the smallest you can increase your pip).
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
-        print time_left
+        #print time_left
         if len(self.opp_range_all) == 1326:
             self.removeSeenFromOppRange(cards)
         while (self.moves < len(move_history)):
@@ -441,8 +448,9 @@ class Player(Bot):
                 if self.postflop_odds[self.keyFromCards(cards,''.join(board_cards))]*(pot + 2*self.bet_opp) - cost >= EV_thresh:
                     temp_range.append(cards)
                 else:
-                    #print "Eliminating " + cards + " from opponent range"
+                    print "Eliminating " + cards + " from opponent range"
                     pass
+                pass
             self.opp_range = temp_range[:]            
 
 
