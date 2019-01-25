@@ -16,6 +16,7 @@ import math
 """
 Simple example pokerbot, written in python.
 """
+vals_dict = {'A':14,'K':13,'Q':12,'J':11,'T':10,'9':9,'8':8,'7':7,'6':6,'5':5,'4':4,'3':3,'2':2}
 
 def full_deck():
     return ['As','2s','3s','4s','5s','6s','7s','8s','9s','Ts','Js','Qs','Ks',
@@ -42,7 +43,10 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
+        self.check_fold = False
+
         self.preflop_odds = pickle.load(open('preflop/preflop_odds.pkl','rb'))
+        self.postflop_odds = pickle.load(open('postflop/postflop_odds.pkl','rb'))
 
         self.moves = 0
         self.phase = 0 # 0:blinds, 1:pre-flop bet, 2:pre-flop exchange, 3:flop bet, 4:flop exchange, 5: turn bet, 6:turn exchange, 7:river bet
@@ -127,6 +131,8 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
+        if len(board_cards) > 3: print "TURN OR RIVER"
+
         while (self.moves < len(move_history)):
             self.handleMove(move_history[self.moves],game,board_cards)
             self.moves += 1
@@ -162,7 +168,7 @@ class Player(Bot):
         min_amount: if BetAction or RaiseAction is valid, the smallest amount you can bet or raise to (i.e. the smallest you can increase your pip).
         max_amount: if BetAction or RaiseAction is valid, the largest amount you can bet or raise to (i.e. the largest you can increase your pip).
         '''
-
+        print time_left
         if len(self.opp_range_all) == 1326:
             self.removeSeenFromOppRange(cards)
         while (self.moves < len(move_history)):
@@ -200,7 +206,8 @@ class Player(Bot):
             bb_per_hand_ahead = (round.bankroll-margin)/(game.num_hands - round.hand_num + 1.0)
 
             if bb_per_hand_ahead > 1.5:
-                print 'WIN SECURE. START CHECK FOLDING. ROUND #' + str(round.hand_num)
+                if not self.check_fold: print 'WIN SECURE. START CHECK FOLDING. ROUND #' + str(round.hand_num)
+                self.check_fold = True
                 if CheckAction in legal_moves: return CheckAction()
                 else: return FoldAction()
 
@@ -397,6 +404,27 @@ class Player(Bot):
             self.opp_range_all = [x for x in self.opp_range_all if card not in x]
             self.opp_range = [x for x in self.opp_range if card not in x]
 
+    def keyFromCards(self,cards,board_cards):
+        #print [cards+board_cards]
+        if vals_dict[cards[2]]>vals_dict[cards[0]]: cards = cards[2:4]+cards[0:2]
+        if vals_dict[board_cards[2]]>vals_dict[board_cards[0]]: board_cards = board_cards[2:4]+board_cards[0:2]+board_cards[4:6]
+        if vals_dict[board_cards[4]]>vals_dict[board_cards[2]]: board_cards = board_cards[0:2]+board_cards[4:6]+board_cards[2:4]
+        if vals_dict[board_cards[2]]>vals_dict[board_cards[0]]: board_cards = board_cards[2:4]+board_cards[0:2]+board_cards[4:6]
+
+        suits_key = ['a','b','e','f']
+        suit_dict = {}
+        key = cards+board_cards
+        for i in range(0,5):
+            if key[2*i+1] not in suit_dict:
+                suit_dict[key[2*i+1]] = suits_key[len(suit_dict)]
+
+        for suit in suit_dict:
+            key = key.replace(suit,suit_dict[suit])
+        key = key.replace('e','c')
+        key = key.replace('f','d')
+        #print key
+        return key
+
     def reduceRangeBasedOnEV(self, pot, cost, board_cards, EV_thresh):
         if len(board_cards)==0:
             temp_range = []
@@ -404,9 +432,19 @@ class Player(Bot):
                 if self.preflop_odds[frozenset([cards[0:2],cards[2:4]])]*(pot + 2*self.bet_opp) - cost >= EV_thresh:
                     temp_range.append(cards)
                 else:
-                    print "Eliminating " + cards + " from opponent range"
+                    #print "Eliminating " + cards + " from opponent range"
                     pass
             self.opp_range = temp_range[:]
+        if len(board_cards)==3:
+            temp_range = []
+            for cards in self.opp_range:
+                if self.postflop_odds[self.keyFromCards(cards,''.join(board_cards))]*(pot + 2*self.bet_opp) - cost >= EV_thresh:
+                    temp_range.append(cards)
+                else:
+                    #print "Eliminating " + cards + " from opponent range"
+                    pass
+            self.opp_range = temp_range[:]            
+
 
     def handleMove(self, move, game, board_cards):
         if (move[0:4] == "SHOW" and move[-1] != game.name):
