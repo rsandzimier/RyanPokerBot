@@ -3,6 +3,7 @@ from pokerbots.actions import FoldAction, CallAction, CheckAction, BetAction, Ra
 import time
 import pickle
 import json
+import sys
 
 try:
     from pbots_calc import calc
@@ -137,7 +138,6 @@ class Player(Bot):
         Nothing.
         '''
         #if len(board_cards) > 3: print "TURN OR RIVER"
-
         while (self.moves < len(move_history)):
             self.handleMove(move_history[self.moves],game,board_cards)
             self.moves += 1
@@ -205,8 +205,8 @@ class Player(Bot):
             return CheckAction()
         else:  # decision to commit resources to the pot
             margin = game.big_blind/2.0 + 1.0
-            if round.bankroll > 0: margin *= 1;
-            elif round.bankroll < 0: margin *= -1;
+            if round.bankroll > 0: margin *= 1
+            elif round.bankroll < 0: margin *= -1
             else: margin *= 0;
             bb_per_hand_ahead = (round.bankroll-margin)/(game.num_hands - round.hand_num + 1.0)
 
@@ -223,9 +223,17 @@ class Player(Bot):
             #    elif RaiseAction in legal_moves and min_bet > min_amount:
             #        return RaiseAction(min_bet)
 
+            aggression_factor = min(max((1.5-bb_per_hand_ahead)/3.0 +np.random.normal(0.0,0.05),0.0),1.0)  # 0 no aggression, 1 full aggression
+
             continue_cost = cost_func(CallAction()) if CallAction in legal_moves else cost_func(CheckAction())
             # figure out how to raise the stakes
-            commit_amount = int(pot.pip + continue_cost + (1 - bb_per_hand_ahead/2)*0.75* (pot.grand_total + continue_cost))
+            if aggression_factor < 0.25:
+                commit_amount = int(pot.pip + continue_cost+4*math.sqrt(max(strength-0.6,0.0))*aggression_factor*(pot.grand_total + continue_cost))
+            elif aggression_factor > 0.6:
+                commit_amount = int(pot.pip + continue_cost+2*math.sqrt(strength)*aggression_factor*(pot.grand_total + continue_cost))
+            else:
+                commit_amount = int(pot.pip + continue_cost+2*math.sqrt(max(strength-0.3,0.0))*aggression_factor*(pot.grand_total + continue_cost))
+
             if min_amount is not None:
                 commit_amount = max(commit_amount, min_amount)
             if max_amount is not None:
@@ -242,11 +250,15 @@ class Player(Bot):
 
             if continue_cost > 0:  # our opponent has raised the stakes
                 if continue_cost > 1 and strength < 1:  # tight-aggressive playstyle
-                    strength -= 0.25  # intimidation factor
+                    strength -= 0.5*min(1.0-aggression_factor,0.5) #(max(min(0.75,continue_cost/(pot.grand_total-continue_cost)),0.25)-0.25)*(1.0-aggression_factor)  # intimidation factor
 
                 # calculate pot odds: is it worth it to stay in the game?
                 pot_odds = float(continue_cost) / (pot.grand_total + continue_cost)
                 if strength >= pot_odds:  # staying in the game has positive EV
+                    #if len(board_cards) == 0 and continue_cost == 1 and strength < 0.8*min(1.0-aggression_factor,0.5):
+                    #    return FoldAction()
+                    #if strength > 1.15-aggression_factor and 2*random.random()*(1.0-aggression_factor) < strength:  # commit more sometimes
+                    #    return commit_action
                     if strength > 0.5 and random.random() < strength:  # commit more sometimes
                         return commit_action
                     return CallAction()
@@ -254,7 +266,11 @@ class Player(Bot):
                     return FoldAction()
 
             elif continue_cost == 0:
-                if random.random() < strength:  # balance bluffs with value bets
+                #if len(board_cards) == 0:
+                #    if 2*0.63*np.random.normal(1.0,0.1)*(1.0-aggression_factor) < strength:  # balance bluffs with value bets
+                #        return commit_action
+                #else:
+                if random.random() < strength: #np.random.normal(1.0,0.2)*(1.0-aggression_factor) < strength:  # balance bluffs with value bets
                     return commit_action
                 return CheckAction()
 
@@ -354,7 +370,7 @@ class Player(Bot):
             print 'HOLD WEIGHTED RATIO: ' + str(hold_ratio) + ' ' + str(self.hold_count_weighted) + ' ' + str(self.hold_count)
             print 'EXCHANGE WEIGHTED RATIO: ' + str(exchange_ratio) + ' ' + str(self.exchange_count_weighted) + ' ' + str(self.exchange_count)
             print 'NORM WEIGHTED RATIO: ' + str(self.norm_ratio)
-
+        sys.stdout.flush()
         return False
 
     def betFromMove(self, move, isB):
