@@ -18,13 +18,18 @@ import math
 """
 Simple example pokerbot, written in python.
 """
-vals_dict = {'A':14,'K':13,'Q':12,'J':11,'T':10,'9':9,'8':8,'7':7,'6':6,'5':5,'4':4,'3':3,'2':2}
 
 def full_deck():
     return ['As','2s','3s','4s','5s','6s','7s','8s','9s','Ts','Js','Qs','Ks',
-    'Ad','2d','3d','4d','5d','6d','7d','8d','9d','Td','Jd','Qd','Kd',
-    'Ac','2c','3c','4c','5c','6c','7c','8c','9c','Tc','Jc','Qc','Kc',
-    'Ah','2h','3h','4h','5h','6h','7h','8h','9h','Th','Jh','Qh','Kh']
+            'Ad','2d','3d','4d','5d','6d','7d','8d','9d','Td','Jd','Qd','Kd',
+            'Ac','2c','3c','4c','5c','6c','7c','8c','9c','Tc','Jc','Qc','Kc',
+            'Ah','2h','3h','4h','5h','6h','7h','8h','9h','Th','Jh','Qh','Kh']
+
+vals_dict = {'A':14,'K':13,'Q':12,'J':11,'T':10,'9':9,'8':8,'7':7,'6':6,'5':5,'4':4,'3':3,'2':2}
+
+VALS = set(['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'])
+SUITS = set(['s', 'd', 'c', 'h'])
+CARDS = set([a+b for a in VALS for b in SUITS])
     
 def full_range():
     deck = full_deck();
@@ -33,6 +38,56 @@ def full_range():
         for j in range(i+1, len(deck)):
             hand_range.append(''.join([deck[i], deck[j]]))
     return hand_range
+
+def checkFlushDraw(cards,board_cards,discarded_cards):
+    if len(set([c[1] for c in board_cards])) > 1: return -1 # If not a flush draw
+    suit = board_cards[0][1]
+    if cards[0][1] == suit or cards[1][1] == suit: return -2 # If we already have a flush
+    remaining_cards = CARDS - (set(cards)|set(board_cards)|set(discarded_cards))
+    return len(set([c for c in remaining_cards if c[1] == suit])) # Return number of outs
+
+def checkStraightDraw(cards,board_cards,discarded_cards):
+    vals = set([vals_dict[c[0]] for c in board_cards])
+    if len(vals)<4: return -1 # If not straight draw
+    if 14 in vals: vals|set([1])
+    for v1 in vals:
+        count = 0
+        for v2 in vals - set([v1]):
+            if abs(v1-v2)<5 and not v1==v2: count +=1
+        if not count == 3: return -1 # If not straight draw
+
+    draw_vals = []
+    for d in range(1,15):
+        if len([a for a in vals if (abs(d-a)<5 and not a==d)]) ==4:
+            v = d
+            if v == 1: v = 14
+            draw_vals.append(v)
+    if len(draw_vals) == 0: return -1 # If not straight draw
+    for v in draw_vals:
+        for c in cards:
+            if v == vals_dict[c[0]]: return -2 # If we already have a straight
+    outs = 0
+    for v in draw_vals:
+        for c in (CARDS - (set(cards)|set(board_cards)|set(discarded_cards))):
+            if v == vals_dict[c[0]]: outs += 1
+    print draw_vals
+    return outs # Return number of outs
+
+def check3ofKindDraw(cards,board_cards,discarded_cards): # Also equivalently checks for full house of 4 of a kind draws
+    draw_vals = set()
+
+    for c1 in board_cards:
+        for c2 in (set(board_cards)-set([c1])):
+            if c1[0] == c2[0]: draw_vals = draw_vals|set(c1[0])
+    if len(draw_vals) == 0: return -1 # If not 3 of a kind draw
+    if not len(draw_vals) == len(draw_vals - set([cards[0][0],cards[1][0]])): return -2 # If we already have a 3 of a kind
+
+    outs = 0
+    for v in draw_vals:
+        for c in (CARDS - (set(cards)|set(board_cards)|set(discarded_cards))):
+            if v == c[0]: outs += 1
+
+    return outs
 
 class Player(Bot):
     def handle_new_game(self, new_game):
@@ -52,7 +107,6 @@ class Player(Bot):
             self.postflop_odds = json.load(fp)
             pass
         print len(self.postflop_odds)
-        #self.postflop_odds = pickle.load(open('postflop/postflop_odds.pkl','rb'))
 
         self.moves = 0
         self.phase = 0 # 0:blinds, 1:pre-flop bet, 2:pre-flop exchange, 3:flop bet, 4:flop exchange, 5: turn bet, 6:turn exchange, 7:river bet
@@ -190,13 +244,51 @@ class Player(Bot):
         else:
             strength = random.random()
 
+        margin = game.big_blind/2.0 + 1.0
+        if round.bankroll > 0: margin *= 1
+        elif round.bankroll < 0: margin *= -1
+        else: margin *= 0;
+        bb_per_hand_ahead = (round.bankroll-margin)/(game.num_hands - round.hand_num + 1.0)
+        aggression_factor = min(max((1.5-bb_per_hand_ahead)/3.0 +np.random.normal(0.0,0.05),0.0),1.0)  # 0 no aggression, 1 full aggression
+
         if ExchangeAction in legal_moves:  # decision to exchange
             # exchange logic
             # if we exchange, we should update self.discarded_cards
             if len(board_cards) == 0: return CheckAction() # Never exchange pre-flop
 
-            strength_exchange = calc('xx:' + ','.join(self.opp_range), ''.join(board_cards), ''.join(self.discarded_cards)+''.join(cards), 1000).ev[0]
             exchange_cost = cost_func(ExchangeAction())
+            outs = 0
+            if len(board_cards) == 4 and (aggression_factor > 0.5 or strength < 0.4):
+                flush_outs = checkFlushDraw(cards,board_cards,self.discarded_cards)
+                straight_outs = checkStraightDraw(cards,board_cards,self.discarded_cards)
+                threekind_outs = check3ofKindDraw(cards,board_cards,self.discarded_cards)
+
+                if flush_outs > 0:
+                    outs = flush_outs
+                elif not straight_outs > 0 and not flush_outs == -2:
+                    outs = straight_outs
+                elif not threekind_outs > 0 and not flush_outs == -2 and not straight_outs == -2:
+                    outs = threekind_outs
+
+            if not outs == 0:
+                stack_rem = game.round_stack - pot.total
+                exchange_cost_cum = 0
+                prob_no_hit_cum = 1.0
+                j = 1
+                while (stack_rem >= ((2**j)-1)*exchange_cost):
+                    cards_rem = 52 - len(cards)-len(board_cards)-len(self.discarded_cards) - 2*(j-1)
+                    exchange_cost_cum += prob_no_hit_cum*(2**(j-1))*exchange_cost
+                    prob_no_hit_cum *= (1.0-outs*1.0/cards_rem)*(1.0-outs*1.0/(cards_rem-1.0))
+                    j+=1
+                exchange_ev = pot.grand_total*(1-prob_no_hit_cum) - prob_no_hit_cum*exchange_cost_cum
+                check_ev = strength * pot.grand_total
+                if exchange_ev > check_ev:  # exchanging is worth it
+                    self.discarded_cards |= set(cards)  # keep track of the cards we discarded
+                    print "EXCHANGE TO HIT DRAW"
+                    return ExchangeAction()
+
+
+            strength_exchange = calc('xx:' + ','.join(self.opp_range), ''.join(board_cards), ''.join(self.discarded_cards)+''.join(cards), 1000).ev[0]
             exchange_ev = strength_exchange * (pot.grand_total + exchange_cost) - exchange_cost
             check_ev = strength * pot.grand_total
             if exchange_ev > check_ev:  # exchanging is worth it
@@ -204,26 +296,11 @@ class Player(Bot):
                 return ExchangeAction()
             return CheckAction()
         else:  # decision to commit resources to the pot
-            margin = game.big_blind/2.0 + 1.0
-            if round.bankroll > 0: margin *= 1
-            elif round.bankroll < 0: margin *= -1
-            else: margin *= 0;
-            bb_per_hand_ahead = (round.bankroll-margin)/(game.num_hands - round.hand_num + 1.0)
-
             if bb_per_hand_ahead > 1.5:
                 if not self.check_fold: print 'WIN SECURE. START CHECK FOLDING. ROUND #' + str(round.hand_num)
                 self.check_fold = True
                 if CheckAction in legal_moves: return CheckAction()
                 else: return FoldAction()
-
-            #if len(board_cards) == 0 and pot.opponent_bets <= 2 and strength > 0.3:
-            #    min_bet = math.ceil(max(4.0 - 4.0*bb_per_hand_ahead,0))
-            #    if BetAction in legal_moves and min_bet > min_amount:
-            #        return BetAction(min_bet)
-            #    elif RaiseAction in legal_moves and min_bet > min_amount:
-            #        return RaiseAction(min_bet)
-
-            aggression_factor = min(max((1.5-bb_per_hand_ahead)/3.0 +np.random.normal(0.0,0.05),0.0),1.0)  # 0 no aggression, 1 full aggression
 
             continue_cost = cost_func(CallAction()) if CallAction in legal_moves else cost_func(CheckAction())
             # figure out how to raise the stakes
@@ -249,29 +326,28 @@ class Player(Bot):
                 return CheckAction()
 
             if continue_cost > 0:  # our opponent has raised the stakes
+                print strength
                 if continue_cost > 1 and strength < 1:  # tight-aggressive playstyle
-                    strength -= 0.5*min(1.0-aggression_factor,0.5) #(max(min(0.75,continue_cost/(pot.grand_total-continue_cost)),0.25)-0.25)*(1.0-aggression_factor)  # intimidation factor
-
+                    strength -= (max(min(0.75,continue_cost*1.0/(pot.grand_total-continue_cost)),0.25)-0.25)*max(min(-1.212*aggression_factor**2+0.5152*aggression_factor+0.5455,0.6),0.25)  # intimidation factor                    print strength
                 # calculate pot odds: is it worth it to stay in the game?
                 pot_odds = float(continue_cost) / (pot.grand_total + continue_cost)
                 if strength >= pot_odds:  # staying in the game has positive EV
-                    #if len(board_cards) == 0 and continue_cost == 1 and strength < 0.8*min(1.0-aggression_factor,0.5):
-                    #    return FoldAction()
-                    #if strength > 1.15-aggression_factor and 2*random.random()*(1.0-aggression_factor) < strength:  # commit more sometimes
-                    #    return commit_action
-                    if strength > 0.5 and random.random() < strength:  # commit more sometimes
+                    if len(board_cards) == 0 and continue_cost > 1 and strength < 0.8*max(min(1.0-aggression_factor,0.5),0.8):
+                        return FoldAction()
+                    if strength > 1.15-aggression_factor and 2*random.random()*(1.0-aggression_factor) < strength:  # commit more sometimes
+                        print [strength,aggression_factor]
                         return commit_action
                     return CallAction()
                 else:  # staying in the game has negative EV
                     return FoldAction()
 
             elif continue_cost == 0:
-                #if len(board_cards) == 0:
-                #    if 2*0.63*np.random.normal(1.0,0.1)*(1.0-aggression_factor) < strength:  # balance bluffs with value bets
-                #        return commit_action
-                #else:
-                if random.random() < strength: #np.random.normal(1.0,0.2)*(1.0-aggression_factor) < strength:  # balance bluffs with value bets
-                    return commit_action
+                if len(board_cards) == 0:
+                    if 2*0.63*np.random.normal(1.0,0.1)*(1.0-aggression_factor) < strength:  # balance bluffs with value bets
+                        return commit_action
+                else:
+                    if np.random.normal(1.0,0.2)*(1.0-aggression_factor) < strength:  # balance bluffs with value bets
+                        return commit_action
                 return CheckAction()
 
         # Default to checkcall
